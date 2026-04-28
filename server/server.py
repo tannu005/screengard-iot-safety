@@ -162,6 +162,14 @@ def detection_loop():
         is_child      = vis.is_child
 
         # ── Trigger brightness controller ────────────────────────────────────
+        # If hardware sensor is absent but we have a virtual camera distance, inject it
+        if vis.face_detected and getattr(vis, 'primary_face', None) and getattr(vis.primary_face, 'estimated_distance', None):
+            # Inject virtual distance to proximity sensor
+            sensor_data = proximity_sensor.simulate(vis.primary_face.estimated_distance)
+            prox = proximity_sensor.get_state()
+            human_present = prox.human_present
+            zone = prox.confirmed_zone
+
         if controller:
             controller.trigger(
                 human_present=human_present,
@@ -258,7 +266,7 @@ def get_status():
     vis  = vision_system.get_state()
     ctrl = controller.get_state() if controller else ControlState()
 
-    return jsonify({
+    payload = {
         "system_enabled": system_enabled,
         "proximity": {
             "zone":          prox.confirmed_zone,
@@ -273,6 +281,7 @@ def get_status():
             "is_child":       vis.is_child,
             "camera_active":  vis.camera_active,
             "camera_fps":     vis.processing_fps,
+            "primary_face_dist": getattr(vis.primary_face, 'estimated_distance', None) if vis.primary_face else None
         },
         "brightness": {
             "current":        ctrl.current_brightness,
@@ -282,7 +291,9 @@ def get_status():
             "reason":         ctrl.trigger_reason,
         },
         "server_time": time.time(),
-    })
+    }
+    logger.info(f"STATUS PAYLOAD: Brightness current={ctrl.current_brightness}, target={ctrl.target_brightness}")
+    return jsonify(payload)
 
 
 @app.route("/api/control", methods=["POST"])

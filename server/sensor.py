@@ -173,7 +173,13 @@ class ProximitySensor:
             "device_id": "simulator",
             "zone": self._classify_zone(distance_cm),
         }
-        return self.ingest(payload)
+        
+        # Inject DEBOUNCE_CONSECUTIVE times to instantly trigger a state change
+        last_reading = None
+        for _ in range(DEBOUNCE_CONSECUTIVE):
+            last_reading = self.ingest(payload)
+            
+        return last_reading
 
     # ── Private helpers ──────────────────────────────────────────────────────
 

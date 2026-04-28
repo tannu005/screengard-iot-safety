@@ -16,6 +16,8 @@ import cv2
 import threading
 import time
 import logging
+import os
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Optional, List, Tuple
@@ -57,8 +59,9 @@ class FaceDetection:
     """Represents a single face detected in a frame."""
     bbox: Tuple[int, int, int, int]   # (x, y, w, h)
     confidence: float
-    age_estimate: Optional[float]     # None until DeepFace runs
+    age_estimate: Optional[float] = None  # None until DeepFace/AgeNet runs
     age_group: str = AGE_GROUP_UNKNOWN
+    estimated_distance: Optional[float] = None  # Virtual proximity sensor
 
 
 @dataclass
@@ -72,6 +75,7 @@ class VisionState:
     last_detection_time: float = 0.0
     processing_fps: float = 0.0
     camera_active: bool = False
+    primary_face: Optional[FaceDetection] = None
 
 
 # ─── FACE DETECTOR (OpenCV DNN — fast, CPU-friendly) ─────────────────────────
@@ -142,9 +146,15 @@ class FaceDetector:
             if x2 <= x1 or y2 <= y1:
                 continue
 
+            face_w = x2 - x1
+            # Virtual distance mapping: distance_cm = 3000 / face_width_px
+            # If face takes up ~300px of 640px frame, distance is 10cm (Danger)
+            virtual_distance = 3000.0 / max(10, face_w)
+
             faces.append(FaceDetection(
-                bbox=(x1, y1, x2 - x1, y2 - y1),
+                bbox=(x1, y1, face_w, y2 - y1),
                 confidence=confidence,
+                estimated_distance=virtual_distance
             ))
 
         return sorted(faces, key=lambda f: f.confidence, reverse=True)
@@ -154,61 +164,55 @@ class FaceDetector:
 
 class AgeEstimator:
     """
-    Age estimation using DeepFace library.
-    Uses pre-trained VGG-Face + age regression head.
-    Lazy-initializes on first call to avoid slow startup.
+    Age estimation using OpenCV Caffe model.
     """
 
     def __init__(self):
         self._initialized = False
         self._init_lock = threading.Lock()
+        self._age_net = None
+        self._age_list = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
+        self._age_medians = [1.0, 5.0, 10.0, 17.5, 28.5, 40.5, 50.5, 80.0]
 
     def _ensure_initialized(self):
-        if self._initialized:
-            return
         with self._init_lock:
             if self._initialized:
                 return
             try:
-                import deepface  # noqa — triggers model download on first import
-                self._deepface = deepface.DeepFace
-                logger.info("DeepFace age estimator ready")
-            except ImportError:
-                logger.error("DeepFace not installed. Run: pip install deepface")
-                raise
-            self._initialized = True
+                model_dir = os.path.join(os.path.dirname(__file__), "models")
+                prototxt = os.path.join(model_dir, "age_deploy.prototxt")
+                caffemodel = os.path.join(model_dir, "age_net.caffemodel")
+                
+                if not os.path.exists(prototxt) or not os.path.exists(caffemodel):
+                    logger.error("Age Net model files missing in server/models/")
+                    return
+                
+                self._age_net = cv2.dnn.readNetFromCaffe(prototxt, caffemodel)
+                self._initialized = True
+                logger.info("OpenCV Caffe Age Net loaded")
+            except Exception as e:
+                logger.error(f"Failed to load Age Net: {e}")
 
     def estimate(self, face_roi: np.ndarray) -> Optional[float]:
         """
-        Estimate age from a face ROI (BGR crop of face bounding box).
-
+        Estimate age from a face ROI using OpenCV Caffe model.
         Returns:
-            Estimated age as float, or None if estimation fails.
+            Estimated age median as float, or None if estimation fails.
         """
         self._ensure_initialized()
 
-        if face_roi is None or face_roi.size == 0:
+        if face_roi is None or face_roi.size == 0 or not self._initialized:
             return None
 
         try:
-            # Ensure minimum size for DeepFace
-            if face_roi.shape[0] < 48 or face_roi.shape[1] < 48:
-                face_roi = cv2.resize(face_roi, (48, 48))
-
-            results = self._deepface.analyze(
-                img_path=face_roi,
-                actions=["age"],
-                enforce_detection=False,
-                silent=True,
-                detector_backend="skip",  # We already detected the face
-            )
-
-            if isinstance(results, list):
-                results = results[0]
-
-            age = float(results.get("age", -1))
-            return age if age > 0 else None
-
+            # OpenCV Age model requires 227x227 input and mean subtraction
+            blob = cv2.dnn.blobFromImage(face_roi, 1.0, (227, 227), (78.4263377603, 87.7689143744, 114.895847746), swapRB=False)
+            self._age_net.setInput(blob)
+            preds = self._age_net.forward()
+            
+            # Calculate Expected Value (Weighted Probability Average)
+            expected_age = float(np.sum(preds[0] * self._age_medians))
+            return expected_age
         except Exception as e:
             logger.debug(f"Age estimation failed: {e}")
             return None
@@ -294,6 +298,7 @@ class VisionSystem:
                 last_detection_time=s.last_detection_time,
                 processing_fps=s.processing_fps,
                 camera_active=s.camera_active,
+                primary_face=s.primary_face,
             )
 
     def get_frame_jpeg(self) -> Optional[bytes]:
@@ -309,11 +314,15 @@ class VisionSystem:
 
     def _run(self):
         """Main loop: capture → detect → estimate → update state."""
-        cap = cv2.VideoCapture(self._camera_index)
+        # Use DirectShow backend on Windows to prevent initialization hangs
+        cap = cv2.VideoCapture(self._camera_index, cv2.CAP_DSHOW)
 
         if not cap.isOpened():
-            logger.error(f"Cannot open camera {self._camera_index}")
-            return
+            # Fallback if DSHOW fails
+            cap = cv2.VideoCapture(self._camera_index)
+            if not cap.isOpened():
+                logger.error(f"Cannot open camera {self._camera_index}")
+                return
 
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -387,6 +396,7 @@ class VisionSystem:
                 self._state.age_group = age_group
                 self._state.is_child = (age_group == AGE_GROUP_CHILD and len(faces) > 0)
                 self._state.processing_fps = round(fps, 1)
+                self._state.primary_face = faces[0] if faces else None
                 if faces:
                     self._state.last_detection_time = now
                 self._latest_frame_jpeg = jpeg.tobytes()
