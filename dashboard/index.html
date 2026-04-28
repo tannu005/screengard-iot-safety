@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ScreenGuard — IoT Safety System</title>
+  <meta name="description" content="Real-time IoT proximity and age detection system for child screen safety. Monitor and control display brightness automatically." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Background particles -->
+  <div id="bg-canvas-wrapper" aria-hidden="true">
+    <canvas id="bg-canvas"></canvas>
+  </div>
+
+  <!-- Header -->
+  <header class="header" role="banner">
+    <div class="header-inner">
+      <div class="logo" aria-label="ScreenGuard">
+        <div class="logo-icon" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+            <rect x="2" y="5" width="24" height="16" rx="2" stroke="currentColor" stroke-width="2"/>
+            <path d="M10 21v2M18 21v2M7 23h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="14" cy="13" r="3.5" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M14 8v1M14 17v1M19 13h-1M10 13H9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <span class="logo-text">Screen<span class="accent">Guard</span></span>
+      </div>
+
+      <div class="header-center">
+        <div class="status-pill" id="system-status-pill" aria-live="polite">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="status-text">Connecting...</span>
+        </div>
+      </div>
+
+      <div class="header-controls">
+        <button class="btn btn-icon" id="btn-toggle" aria-label="Toggle system" title="Enable/Disable system">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M10 3v7M6.34 5.34A7 7 0 1 0 13.66 5.34" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button class="btn btn-icon" id="btn-restore" aria-label="Restore brightness" title="Restore to 100%">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M10 2a8 8 0 0 1 0 16A8 8 0 0 1 10 2Z" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M10 6v4l3 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Grid -->
+  <main class="main-grid" role="main">
+
+    <!-- ── LEFT COLUMN ──────────────────────────────────────────────────────── -->
+    <div class="col-left">
+
+      <!-- Brightness Card -->
+      <section class="card card-brightness" aria-label="Brightness control">
+        <div class="card-header">
+          <span class="card-label">Display Brightness</span>
+          <span class="badge" id="brightness-level-badge">NORMAL</span>
+        </div>
+
+        <div class="brightness-display">
+          <div class="brightness-arc-wrapper" aria-label="Brightness gauge">
+            <canvas id="brightness-arc" width="240" height="160" aria-hidden="true"></canvas>
+            <div class="brightness-center">
+              <span class="brightness-value" id="brightness-value">100</span>
+              <span class="brightness-unit">%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="brightness-track-wrapper">
+          <div class="brightness-track">
+            <div class="brightness-fill" id="brightness-fill"></div>
+            <div class="brightness-thumb" id="brightness-thumb"></div>
+          </div>
+          <div class="brightness-labels">
+            <span>0%</span><span>50%</span><span>100%</span>
+          </div>
+        </div>
+
+        <div class="brightness-reason" id="brightness-reason">System ready</div>
+
+        <!-- Manual control -->
+        <div class="manual-slider-row">
+          <label for="manual-brightness" class="slider-label">Manual Override</label>
+          <input type="range" id="manual-brightness" min="0" max="100" value="100" class="custom-slider" aria-label="Manual brightness" />
+          <span class="slider-value" id="manual-value">100%</span>
+        </div>
+      </section>
+
+      <!-- Proximity Card -->
+      <section class="card card-proximity" aria-label="Proximity detection">
+        <div class="card-header">
+          <span class="card-label">Proximity Sensor</span>
+          <span class="badge badge-zone" id="zone-badge">ABSENT</span>
+        </div>
+
+        <div class="proximity-display">
+          <div class="distance-radar" aria-hidden="true">
+            <canvas id="radar-canvas" width="200" height="120"></canvas>
+          </div>
+          <div class="distance-readout">
+            <div class="distance-value" id="distance-value">--</div>
+            <div class="distance-unit">cm</div>
+          </div>
+        </div>
+
+        <div class="zone-bars">
+          <div class="zone-bar" id="zone-safe">
+            <div class="zone-bar-fill"></div>
+            <span>SAFE &gt;25cm</span>
+          </div>
+          <div class="zone-bar" id="zone-warning">
+            <div class="zone-bar-fill"></div>
+            <span>WARNING 10–25cm</span>
+          </div>
+          <div class="zone-bar" id="zone-danger">
+            <div class="zone-bar-fill"></div>
+            <span>DANGER &lt;10cm</span>
+          </div>
+        </div>
+
+        <!-- Simulation controls -->
+        <div class="sim-section">
+          <div class="sim-header">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M7 1v1M7 12v1M1 7h1M12 7h1M2.93 2.93l.71.71M10.36 10.36l.71.71M10.36 3.64l-.71.71M3.64 10.36l-.71.71" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+              <circle cx="7" cy="7" r="2.5" stroke="currentColor" stroke-width="1.2"/>
+            </svg>
+            Simulation Mode
+          </div>
+          <div class="sim-controls">
+            <button class="sim-btn" id="sim-safe" data-dist="60">Safe (60cm)</button>
+            <button class="sim-btn" id="sim-warn" data-dist="20">Warning (20cm)</button>
+            <button class="sim-btn" id="sim-danger" data-dist="6">Danger (6cm)</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ── CENTER COLUMN ─────────────────────────────────────────────────────── -->
+    <div class="col-center">
+
+      <!-- Camera Feed -->
+      <section class="card card-camera" aria-label="Camera feed">
+        <div class="card-header">
+          <span class="card-label">Live Camera Feed</span>
+          <div class="camera-status-row">
+            <div class="rec-indicator" id="rec-indicator" aria-live="polite">
+              <span class="rec-dot" aria-hidden="true"></span>
+              <span id="rec-text">Initializing</span>
+            </div>
+            <span class="fps-counter" id="fps-counter" aria-label="Camera FPS">-- fps</span>
+          </div>
+        </div>
+        <div class="camera-viewport">
+          <img id="camera-feed" src="/video_feed" alt="Live annotated camera feed" class="camera-img" />
+          <div class="camera-overlay" id="camera-overlay">
+            <div class="overlay-icon" aria-hidden="true">
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                <rect x="4" y="12" width="40" height="28" rx="4" stroke="currentColor" stroke-width="2"/>
+                <circle cx="24" cy="26" r="8" stroke="currentColor" stroke-width="2"/>
+                <circle cx="24" cy="26" r="3" fill="currentColor"/>
+                <path d="M16 12V10a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-width="2"/>
+              </svg>
+            </div>
+            <p>Camera initializing…</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Detection Status Cards -->
+      <div class="detection-grid">
+        <div class="detect-card" id="card-face" aria-label="Face detection status">
+          <div class="detect-icon" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+              <circle cx="14" cy="14" r="11" stroke="currentColor" stroke-width="1.5"/>
+              <circle cx="10" cy="12" r="1.5" fill="currentColor"/>
+              <circle cx="18" cy="12" r="1.5" fill="currentColor"/>
+              <path d="M10 18c1.1 1.5 6.9 1.5 8 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="detect-info">
+            <span class="detect-label">Face Detection</span>
+            <span class="detect-value" id="face-status">No Face</span>
+          </div>
+          <div class="detect-dot" id="face-dot"></div>
+        </div>
+
+        <div class="detect-card" id="card-age" aria-label="Age classification status">
+          <div class="detect-icon" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+              <path d="M14 3C8 3 3 8 3 14s5 11 11 11 11-5 11-11S20 3 14 3Z" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M9 17s1-3 5-3 5 3 5 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M10 11h1M17 11h1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="detect-info">
+            <span class="detect-label">Age Group</span>
+            <span class="detect-value" id="age-value">Unknown</span>
+          </div>
+          <div class="detect-dot" id="age-dot"></div>
+        </div>
+
+        <div class="detect-card" id="card-human" aria-label="Human presence status">
+          <div class="detect-icon" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+              <circle cx="14" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M6 24c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="detect-info">
+            <span class="detect-label">Human Present</span>
+            <span class="detect-value" id="human-status">Absent</span>
+          </div>
+          <div class="detect-dot" id="human-dot"></div>
+        </div>
+
+        <div class="detect-card" id="card-alert" aria-label="Alert status">
+          <div class="detect-icon" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+              <path d="M14 4L3 22h22L14 4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+              <path d="M14 12v5M14 20v1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="detect-info">
+            <span class="detect-label">Safety Alert</span>
+            <span class="detect-value" id="alert-status">None</span>
+          </div>
+          <div class="detect-dot" id="alert-dot"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── RIGHT COLUMN ─────────────────────────────────────────────────────── -->
+    <div class="col-right">
+
+      <!-- System Controls -->
+      <section class="card card-controls" aria-label="System controls">
+        <div class="card-header">
+          <span class="card-label">System Control</span>
+        </div>
+
+        <div class="power-btn-wrapper">
+          <button class="power-btn" id="power-btn" aria-label="System power toggle" aria-pressed="true">
+            <div class="power-ring" aria-hidden="true"></div>
+            <svg class="power-icon" width="36" height="36" viewBox="0 0 36 36" fill="none">
+              <path d="M18 6v10M11.5 9.5A10 10 0 1 0 24.5 9.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            </svg>
+            <span class="power-label" id="power-label">ACTIVE</span>
+          </button>
+        </div>
+
+        <div class="control-actions">
+          <button class="action-btn" id="action-restore">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2Z" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M8 5v3l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            Restore Brightness
+          </button>
+          <button class="action-btn action-btn-danger" id="action-emergency">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M8 2L1.5 13h13L8 2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+              <path d="M8 7v3M8 11.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            Emergency Dim
+          </button>
+        </div>
+
+        <!-- Thresholds -->
+        <div class="thresholds">
+          <div class="threshold-row">
+            <span class="thresh-label">Age Threshold</span>
+            <div class="thresh-control">
+              <input type="number" id="age-thresh" value="12" min="5" max="18" class="thresh-input" aria-label="Age threshold in years" />
+              <span class="thresh-unit">years</span>
+            </div>
+          </div>
+          <div class="threshold-row">
+            <span class="thresh-label">Danger Zone</span>
+            <div class="thresh-control">
+              <input type="number" id="danger-thresh" value="10" min="3" max="30" class="thresh-input" aria-label="Danger zone threshold in cm" />
+              <span class="thresh-unit">cm</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Event Log -->
+      <section class="card card-log" aria-label="Event history log">
+        <div class="card-header">
+          <span class="card-label">Event Log</span>
+          <button class="btn-clear" id="btn-clear-log" aria-label="Clear log">Clear</button>
+        </div>
+        <div class="log-scroll" id="event-log" aria-live="polite" aria-relevant="additions" role="log">
+          <div class="log-empty">No events yet</div>
+        </div>
+      </section>
+
+    </div>
+
+  </main>
+
+  <!-- Connection Lost Banner -->
+  <div class="conn-banner" id="conn-banner" role="alert" aria-live="assertive" hidden>
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M8 5v3.5M8 10.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    Connection lost — attempting to reconnect…
+  </div>
+
+  <!-- Toast notifications -->
+  <div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
