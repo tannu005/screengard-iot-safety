@@ -314,15 +314,23 @@ class VisionSystem:
 
     def _run(self):
         """Main loop: capture → detect → estimate → update state."""
-        # Use DirectShow backend on Windows to prevent initialization hangs
-        cap = cv2.VideoCapture(self._camera_index, cv2.CAP_DSHOW)
+        cap = None
+        working_index = self._camera_index
 
-        if not cap.isOpened():
-            # Fallback if DSHOW fails
-            cap = cv2.VideoCapture(self._camera_index)
-            if not cap.isOpened():
-                logger.error(f"Cannot open camera {self._camera_index}")
-                return
+        # Try auto-detecting the first working camera if the default one fails
+        for idx in range(self._camera_index, self._camera_index + 4):
+            # Use DirectShow backend on Windows to prevent initialization hangs
+            temp_cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+            if temp_cap.isOpened():
+                cap = temp_cap
+                working_index = idx
+                logger.info(f"Using camera at index {idx}")
+                break
+            temp_cap.release()
+
+        if cap is None or not cap.isOpened():
+            logger.error("No working camera found (tried indices 0-3)")
+            return
 
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
