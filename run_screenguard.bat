@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ========================================================
-echo   ScreenGuard - IoT Safety System | Launching...
+echo   ScreenGuard - IoT Safety System - Launching...
 echo ========================================================
 
 cd server
