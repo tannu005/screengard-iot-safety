@@ -22,11 +22,11 @@ class TestProximitySensor:
             self.sensor.simulate(distance_cm)
 
     def test_zone_classification_danger(self):
-        self._inject(6.0, n=5)
+        self._inject(20.0, n=5)
         assert self.sensor.get_zone() == ZONE_DANGER
 
     def test_zone_classification_warning(self):
-        self._inject(20.0, n=5)
+        self._inject(40.0, n=5)
         assert self.sensor.get_zone() == ZONE_WARNING
 
     def test_zone_classification_safe(self):
@@ -39,7 +39,7 @@ class TestProximitySensor:
 
     def test_debounce_requires_consecutive(self):
         # Only 1 danger reading — should not confirm zone (needs DEBOUNCE_CONSECUTIVE=3)
-        self.sensor.simulate(5.0)
+        self.sensor.ingest({"distance_cm": 5.0})
         # The internal pending counter should have incremented
         assert self.sensor._pending_count >= 1
         # But confirmed zone should NOT be danger yet (only 1 of 3 required readings)
@@ -157,7 +157,7 @@ class TestIntegration:
         try:
             # Inject danger zone
             for _ in range(5):
-                sensor.simulate(5.0)
+                sensor.simulate(20.0)
 
             state = sensor.get_state()
             ctrl.trigger(

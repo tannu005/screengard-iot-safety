@@ -364,7 +364,7 @@ function drawRadar(zone, distanceCm) {
 
   // Draw 3 concentric arcs (thresholds)
   const radii = [maxR * 0.35, maxR * 0.65, maxR];
-  const labels = ["10cm", "25cm", ""];
+  const labels = ["25cm", "50cm", ""];
 
   radii.forEach((r, i) => {
     ctx.beginPath();

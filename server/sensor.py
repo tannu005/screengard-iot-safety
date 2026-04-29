@@ -19,13 +19,13 @@ from typing import Optional, List
 
 # ─── CONSTANTS ───────────────────────────────────────────────────────────────
 
-ZONE_DANGER  = "danger"    # distance ≤ 10 cm
-ZONE_WARNING = "warning"   # distance ≤ 25 cm
-ZONE_SAFE    = "safe"      # distance > 25 cm
+ZONE_DANGER  = "danger"    # distance ≤ 25 cm
+ZONE_WARNING = "warning"   # distance ≤ 50 cm
+ZONE_SAFE    = "safe"      # distance > 50 cm
 ZONE_ABSENT  = "absent"    # no object / timeout
 
-DISTANCE_DANGER_CM  = 10.0
-DISTANCE_WARNING_CM = 25.0
+DISTANCE_DANGER_CM  = 25.0
+DISTANCE_WARNING_CM = 50.0
 
 # Debounce: require N consecutive zone readings before confirming
 DEBOUNCE_CONSECUTIVE = 3

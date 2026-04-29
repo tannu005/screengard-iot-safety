@@ -33,8 +33,8 @@ const int ECHO_PIN = 18;
 const int STATUS_LED = 2;
 
 // Distance thresholds (cm)
-const float PROXIMITY_CLOSE   = 10.0;   // Trigger brightness reduction
-const float PROXIMITY_WARNING = 25.0;   // Human presence zone
+const float PROXIMITY_CLOSE   = 25.0;   // Trigger brightness reduction
+const float PROXIMITY_WARNING = 50.0;   // Human presence zone
 const float PROXIMITY_MAX     = 200.0;  // Ignore readings beyond this (noise filter)
 const float PROXIMITY_MIN     = 2.0;    // Ignore readings below this (sensor blind zone)
 
